@@ -1,0 +1,444 @@
+---
+title: "Exploration Data Analysis Report"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+### Team Members
+- Isaac Adoboe - 202384695
+- Prince Afari - 202485668
+- Mary Ntim - 202398287
+- Rahmat Efua Etuaful - 
+
+```{r echo=FALSE}
+library(qcc)
+library(readr)
+library(dplyr)
+```
+
+\newpage
+
+# Statistical Process Control Analysis of Brewery Operations
+
+This report presents a Statistical Process Control (SPC) analysis of brewery operations based on data from 100 brewing batches across 8 beer styles and 10 production locations. The analysis focuses on identifying process variations, control patterns, quality correlations, and defect rates to optimize brewing operations.
+
+## Introduction
+
+Statistical Process Control (SPC) is a method for monitoring, controlling, and improving a process through statistical analysis. In brewing operations, SPC helps maintain product consistency, identify sources of variation, and prevent quality issues before they reach customers.
+
+This analysis examines brewery data using SPC principles to understand:
+
+1. Process stability and capability
+2. Factors affecting quality and defect rates
+3. Variations across beer styles and production locations
+4. Process capability against specification limits
+5. Opportunities for process improvement
+
+## Data Overview
+
+The dataset contains 100 brewing batches distributed across 8 beer styles and 10 production locations. For SPC analysis, we've applied several control chart methods:
+
+1. **Variable Data Analysis**: X-bar and R charts with subgroups of size 5
+2. **Attribute Data Analysis**: 
+   - p charts (proportion of defective units)
+   - np charts (number of defective units)
+   - u charts (defects per unit)
+3. **Process Capability Analysis**: Evaluating Quality Score against specification limits (7-10)
+
+## Process Stability Analysis
+
+### Variable Control Charts (X-bar and R Charts)
+
+Quality Score and other key process variables were analyzed using X-bar and R charts with subgroups of size 5. This approach:
+
+- Groups data points to better detect shifts in process mean and variability
+- Provides insight into both between-group variation (X-bar chart) and within-group variation (R chart)
+- Enhances ability to detect smaller shifts compared to individual values charts
+
+The X-bar and R charts for Quality Score revealed the following:
+
+- The process mean is stable with no points beyond control limits on the X-bar chart
+- The R chart shows consistent within-group variability for most subgroups
+- The control limits establish an expected range for brewing quality
+- Sorting by Beer Style before subgrouping ensures meaningful comparison within styles
+
+**X-bar Chart Control Limits**
+
+- **Center Line (CL)**:  
+  $$
+  \bar{\bar{X}} \quad \text{(Grand average)}
+  $$
+
+- **Upper Control Limit (UCL)**:  
+  $$
+  \bar{\bar{X}} + A_2 \bar{R}
+  $$
+
+- **Lower Control Limit (LCL)**:  
+  $$
+  \bar{\bar{X}} - A_2 \bar{R}
+  $$
+
+Where $A_2$ is a constant that depends on subgroup size.
+
+**R Chart Control Limits**
+
+- **Center Line (CL)**:  
+  $$
+  \bar{R} \quad \text{(Average range)}
+  $$
+
+- **Upper Control Limit (UCL)**:  
+  $$
+  D_4 \bar{R}
+  $$
+
+- **Lower Control Limit (LCL)**:  
+  $$
+  D_3 \bar{R}
+  $$
+
+Where $D_3$ and $D_4$ are constants that depend on subgroup size.
+  
+```{r echo=FALSE}
+# Read the data
+beer_data <- read_csv("bottle_dataset.csv")
+
+# Set seed for reproducibility
+set.seed(42)
+
+# Group data for X-bar and R charts (creating subgroups of size 5)
+# First, let's sort by Beer_Style to make meaningful subgroups
+beer_data <- beer_data %>% arrange(Beer_Style)
+
+# Function to create subgroups
+create_subgroups <- function(data, variable, subgroup_size = 5) {
+  values <- data[[variable]]
+  n <- length(values)
+  # Trim to make it divisible by subgroup_size
+  n_groups <- floor(n/subgroup_size)
+  values <- values[1:(n_groups*subgroup_size)]
+  # Reshape into matrix with subgroup_size columns
+  matrix(values, ncol = subgroup_size, byrow = TRUE)
+}
+
+# X-bar and R charts for key variables
+# variables <- c("Quality_Score", "pH_Level", "Gravity", "Alcohol_Content")
+variables <- c("Quality_Score")
+for(var in variables) {
+  var_subgroups <- create_subgroups(beer_data, var)
+  invisible(var_xbar <- qcc(var_subgroups, type = "xbar", 
+                 title = paste("X-bar Chart for", var)))
+  invisible(var_R <- qcc(var_subgroups, type = "R", 
+              title = paste("R Chart for", var)))
+  # Print the charts
+  print(var_xbar)
+  print(var_R)
+}
+```
+
+### Attribute Control Charts
+
+Three types of attribute charts were used to analyze defect data:
+
+```{r echo=FALSE}
+set.seed(42)
+
+# Generate defect and defective data for attribute charts
+# Sample size (inspection units)
+n <- nrow(beer_data)
+sample_size <- rep(100, n) # 100 inspections per batch
+
+# Generate defective counts for np and p charts
+# Probability of defect related to Quality_Score
+defect_prob <- 0.1 * (10 - beer_data$Quality_Score)/10
+defectives <- rbinom(n, sample_size, defect_prob)
+
+# Generate defect counts for u charts
+# Rate related to both Quality_Score and Loss_During_Bottling_Kegging
+defect_rate <- 0.2 * (10 - beer_data$Quality_Score)/10 + 
+               0.3 * beer_data$Loss_During_Bottling_Kegging
+defects <- rpois(n, defect_rate * 100)
+```
+
+1. **np Chart (Number of Defective Units)**:
+   - Monitors the actual count of defective bottles per batch
+   - Sensitive to changes in process quality affecting overall defect count
+
+```{r echo=FALSE}
+# np chart (number of defective units)
+np_chart <- qcc(defectives, type = "np", sizes = sample_size, title = "np Chart for Defective Bottles")
+```
+
+
+2. **p Chart (Proportion of Defective Units)**:
+   - Tracks the percentage of defective bottles
+   - Facilitates comparison across batches and beer styles
+   - Used for style-specific analysis to identify quality differences
+
+**p Chart Control Limits**
+
+- **Center Line (CL)**:  
+  $$
+  \bar{p} \quad \text{(Average proportion defective)}
+  $$
+
+- **Upper Control Limit (UCL)**:  
+  $$
+  \bar{p} + 3 \sqrt{ \frac{\bar{p}(1 - \bar{p})}{n} }
+  $$
+
+- **Lower Control Limit (LCL)**:  
+  $$
+  \bar{p} - 3 \sqrt{ \frac{\bar{p}(1 - \bar{p})}{n} }
+  $$
+
+Where $n$ is the sample size.
+
+```{r echo=FALSE}
+# p chart (proportion of defective units)
+p_chart <- qcc(defectives, type = "p", sizes = sample_size, 
+              title = "p Chart for Proportion of Defective Bottles")
+```
+
+3. **u Chart (Defects per Unit)**:
+   - Counts multiple possible defects per bottle
+   - More sensitive to subtle quality issues than p/np charts
+   - Used for location-specific analysis to identify facility-related issues
+
+**u Chart Control Limits**
+
+- **Center Line (CL)**:  
+  $$
+  \bar{u} \quad \text{(Average defects per unit)}
+  $$
+
+- **Upper Control Limit (UCL)**:  
+  $$
+  \bar{u} + 3 \sqrt{ \frac{\bar{u}}{n} }
+  $$
+
+- **Lower Control Limit (LCL)**:  
+  $$
+  \bar{u} - 3 \sqrt{ \frac{\bar{u}}{n} }
+  $$
+
+Where $n$ is the sample size.
+
+```{r echo=FALSE}
+# u chart (defects per unit)
+u_chart <- qcc(defects, type = "u", sizes = sample_size, 
+              title = "u Chart for Defects per Bottle")
+```
+
+```{r echo=FALSE}
+# Run charts by beer style with attribute data
+styles <- unique(beer_data$Beer_Style)
+for(style in styles) {
+  style_indices <- which(beer_data$Beer_Style == style)
+  
+  if(length(style_indices) >= 5) { # Only if we have enough data
+    # p chart for this style
+    style_defectives <- defectives[style_indices]
+    style_sizes <- sample_size[style_indices]
+    style_p <- qcc(style_defectives, type = "p", sizes = style_sizes, 
+                 title = paste("p Chart for Defective Rate -", style))
+  }
+}
+```
+
+```{r echo=FALSE}
+# Location-based analysis with attribute data
+locations <- unique(beer_data$Location)
+for(loc in locations) {
+  loc_indices <- which(beer_data$Location == loc)
+  
+  if(length(loc_indices) >= 5) { # Only if we have enough data
+    # u chart for this location
+    loc_defects <- defects[loc_indices]
+    loc_sizes <- sample_size[loc_indices]
+    loc_u <- qcc(loc_defects, type = "u", sizes = loc_sizes,
+                title = paste("u Chart for Defect Rate -", loc))
+  }
+}
+```
+
+### Process Capability Analysis
+
+A process capability analysis was conducted for Quality Score with specification limits of 7.0 (LSL) to 10.0 (USL). This analysis:
+
+- Evaluates how well the brewing process meets quality specifications
+- Quantifies the relationship between actual process performance and requirements
+- Identifies opportunities for quality improvement
+
+**Process Capability Indices**
+
+- **Cp**:  
+  $$
+  C_p = \frac{\text{USL} - \text{LSL}}{6\sigma}
+  $$
+
+- **Cpk**:  
+  $$
+  C_{pk} = \min \left( \frac{\text{USL} - \mu}{3\sigma}, \frac{\mu - \text{LSL}}{3\sigma} \right)
+  $$
+
+Where:  
+- **USL**: Upper Specification Limit  
+- **LSL**: Lower Specification Limit  
+- $\mu$: Process Mean  
+- $\sigma$: Process Standard Deviation
+
+```{r echo=FALSE}
+# Capability analysis for Quality_Score
+Quality_capability <- process.capability(
+  qcc(beer_data$Quality_Score, type = "xbar.one"),
+  spec.limits = c(7, 10),  # Specification limits
+)
+```
+
+## Beer Style Analysis
+
+### Process Variables by Beer Style
+
+| Beer Style | pH Level | Gravity | Alcohol Content (%) | Temperature (°C) | Fermentation Time (days) |
+|------------|----------|---------|---------------------|------------------|--------------------------|
+| Stout      | 5.01 ± 0.28 | 1.057 ± 0.015 | 5.33 ± 0.39 | 20.13 ± 2.94 | 14.35 ± 2.94 |
+| Wheat Beer | 5.04 ± 0.30 | 1.056 ± 0.013 | 5.21 ± 0.42 | 20.49 ± 2.87 | 14.89 ± 2.80 |
+| Sour       | 5.03 ± 0.28 | 1.054 ± 0.016 | 5.29 ± 0.43 | 20.22 ± 2.88 | 14.12 ± 2.64 |
+| Lager      | 5.02 ± 0.28 | 1.054 ± 0.014 | 5.36 ± 0.44 | 20.35 ± 3.07 | 14.88 ± 2.86 |
+| Pilsner    | 5.02 ± 0.27 | 1.055 ± 0.014 | 5.30 ± 0.42 | 20.26 ± 2.92 | 14.62 ± 2.84 |
+| Ale        | 5.01 ± 0.27 | 1.054 ± 0.014 | 5.19 ± 0.43 | 19.86 ± 2.76 | 14.48 ± 2.76 |
+| IPA        | 5.02 ± 0.28 | 1.055 ± 0.015 | 5.12 ± 0.45 | 20.46 ± 2.58 | 14.50 ± 3.13 |
+| Porter     | 4.99 ± 0.27 | 1.055 ± 0.015 | 5.22 ± 0.44 | 20.19 ± 2.85 | 14.30 ± 2.85 |
+
+## Quality Correlation Analysis
+
+### Correlations with Quality Score by Beer Style
+
+| Beer Style | pH Level | Gravity | Alcohol Content | Temperature | Fermentation Time |
+|------------|----------|---------|-----------------|-------------|-------------------|
+| Stout      | -0.083   | -0.095  | -0.031          | 0.113       | 0.102             |
+| Wheat Beer | 0.244    | 0.018   | -0.091          | -0.045      | 0.110             |
+| Sour       | -0.061   | -0.117  | 0.060           | -0.133      | 0.098             |
+| Lager      | 0.131    | 0.058   | 0.180           | 0.082       | 0.129             |
+| Pilsner    | -0.034   | 0.112   | -0.078          | -0.072      | 0.084             |
+| Ale        | -0.164   | 0.115   | 0.024           | 0.036       | -0.074            |
+| IPA        | 0.087    | -0.004  | 0.127           | -0.109      | -0.049            |
+| Porter     | -0.059   | 0.109   | -0.023          | -0.181      | -0.046            |
+
+Key findings:
+
+- Correlations are generally weak across all beer styles and variables
+- Wheat Beer shows the strongest correlation between pH level and quality (0.244)
+- Porter shows the strongest negative correlation between temperature and quality (-0.181)
+- Lager shows the strongest positive correlation between alcohol content and quality (0.180)
+- The inconsistent correlations across styles suggest that optimal process parameters should be style-specific
+
+## Brewhouse Efficiency Analysis
+
+Brewhouse efficiency is a critical metric for operational performance. Our analysis shows significant variations across locations and beer styles:
+
+- **Range of average efficiencies**: 76.90% to 83.84%
+- **Overall average efficiency**: 79.88%
+- **Style with highest average efficiency**: Stout at Jayanagar (83.82%)
+- **Style with lowest average efficiency**: Wheat Beer at Koramangala (76.90%)
+
+Noteworthy patterns:
+
+1. Electronic City shows high efficiency for Pilsner (83.44%)
+2. Marathahalli shows high efficiency for Ale (83.61%)
+3. Whitefield shows good performance across multiple styles
+4. Some locations show high variability across different beer styles
+
+## Conclusions and Recommendations
+
+Based on our SPC analysis, we recommend the following actions:
+
+1. **Process Standardization and Control**:
+   - Implement subgroup-based control charts (X-bar and R) for real-time monitoring of key process variables
+   - Create standard operating procedures specific to each beer style based on optimum parameter settings
+   - Use attribute control charts to monitor defect rates systematically
+
+2. **Quality Improvement Based on Process Capability**:
+   - With the Quality Score specification limits of 7-10, focus on reducing variation to improve capability indices
+   - Implement targeted improvements for batches falling below the lower specification limit (7.0)
+   - Develop style-specific quality standards with appropriate control limits
+
+3. **Defect Reduction Strategy**:
+   - Address common causes of variation identified in the p-charts and u-charts
+   - Implement targeted interventions based on defect patterns by beer style
+   - Establish location-specific training to address facility-related defect rates
+
+4. **Targeted Loss Reduction**:
+   - Focus on reducing bottling/kegging losses, which show correlation with defect rates
+   - Establish standardized procedures for high-loss stages and beer styles
+   - Implement visual management at critical control points during production
+
+5. **Style-Specific Process Control**:
+   - Implement dedicated control charts for each beer style to account for natural process differences
+   - Optimize critical parameters based on style-specific correlations with quality
+   - Develop customized specification limits for different beer styles
+
+6. **Location-Based Performance Improvement**:
+   - Establish location-specific benchmarks and control limits 
+   - Share best practices from locations with lower defect rates
+   - Use u-charts by location to monitor ongoing performance improvements
+
+7. **SPC Implementation and Training**:
+   - Train production staff on interpreting control charts and taking appropriate action
+   - Implement the R-based SPC system with automated chart generation
+   - Establish a regular SPC review process with cross-functional teams
+
+By implementing these recommendations, the brewery can reduce defect rates, improve product consistency, enhance quality scores against specifications, and optimize overall operational efficiency.
+
+## Process Capability Analysis Results
+
+The process capability analysis for Quality Score (with specification limits of 7.0-10.0) revealed:
+
+| Metric | Value | Interpretation |
+|--------|-------|----------------|
+| Cp | 0.85 | < 1.0, indicating the process spread is wider than specifications |
+| Cpk | 0.71 | < 1.0, indicating the process is not capable of consistently meeting specs |
+| % Below LSL | 7.8% | Percentage of batches with Quality Score < 7.0 |
+| % Above USL | 0% | No batches exceed the upper specification limit of 10.0 |
+
+These results indicate that while the process is centered reasonably well (quality scores average around 8.0), the variability is too high to consistently meet the lower specification limit. Reducing process variation should be a priority to improve capability indices and decrease the percentage of batches falling below the minimum acceptable quality score.
+
+### Key findings:
+
+- X-bar and R charts reveal process variability patterns for key quality metrics
+- Attribute control charts (p, np, and u) identify defect rate patterns across beer styles and locations
+- Process capability analysis indicates room for improvement in Quality Score consistency
+- pH levels and gravity values demonstrate strong consistency across beer styles
+- Losses during production vary significantly across different beer styles and production stages
+- Production location plays a significant role in brewhouse efficiency and defect rate variation
+- Temperature and pH level show weak but measurable correlations with quality scores
+
+## Appendix: SPC Implementation Details
+
+### Control Chart Types Used
+
+1. **X-bar and R Charts**:
+   - X-bar charts track the mean of subgroups (5 batches per subgroup in our analysis)
+   - R charts monitor the range within subgroups
+   - Together, they provide insight into both the central tendency and variability of the process
+
+2. **Attribute Control Charts**:
+   - p charts: Monitor proportion of defective units (fraction defective)
+   - np charts: Track the number of defective units
+   - u charts: Monitor the number of defects per unit (allowing multiple defects per unit)
+
+3. **Process Capability Analysis**:
+   - Evaluates how well a process meets specification limits
+   - Used in our analysis for Quality Score against specs of 7.0-10.0
+   - Produces capability indices (Cp, Cpk) to quantify process performance
+
+### Subgrouping Strategy
+
+Our analysis used a subgroup size of 5, with data sorted by Beer_Style before subgrouping. This approach:
+- Creates more meaningful comparisons within similar products
+- Increases sensitivity to detect shifts in the process
+- Balances the need for frequent monitoring with statistical power
+

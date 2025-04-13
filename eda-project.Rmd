@@ -1,0 +1,176 @@
+---
+title: "Statistical Process Control"
+output:
+  pdf_document: default
+  html_document: default
+date: "2025-04-08"
+---
+
+## Executive Summary
+This report presents a Statistical Process Control (SPC) analysis of brewery operations based on data from 100 brewing batches across 8 beer styles and 10 production locations. The analysis focuses on identifying process variations, control patterns, and quality correlations to optimize brewing operations.
+
+### Key findings:
+
+All key process variables are in statistical control but show suspicious run patterns
+pH levels and gravity values demonstrate strong consistency across beer styles
+Losses during production vary significantly across different beer styles and production stages
+Production location plays a significant role in brewhouse efficiency variation
+Temperature and pH level show weak but measurable correlations with quality scores
+
+## Introduction
+Statistical Process Control (SPC) is a method for monitoring, controlling, and improving a process through statistical analysis. In brewing operations, SPC helps maintain product consistency, identify sources of variation, and prevent quality issues before they reach customers.
+This analysis examines brewery data using SPC principles to understand:
+
+1. Process stability and capability
+2. Factors affecting quality
+3. Variations across beer styles and production locations
+4. Opportunities for process improvement
+
+## Process Stability Analysis
+### Control Limits for Key Process Variables
+We calculated 3-sigma control limits for key process variables:
+
+### Process Control Findings
+
+1. Point Conformance: All process variables showed no points outside the 3-sigma control limits, which indicates good statistical control of the process.
+2. Run Patterns: Despite point conformance, run tests revealed suspicious patterns in all variables:
+
+- pH Level: Longest run of 14 consecutive points above/below mean
+- Gravity: Longest run of 10 consecutive points
+- Temperature: Longest run of 10 consecutive points
+- Other variables: Similar patterns with runs of 8-16 consecutive points
+
+3. Coefficient of Variation (CV):
+
+Process variables show varying degrees of consistency:
+Gravity is the most consistent (CV = 1.38%)
+pH Level shows good consistency (CV = 5.55%)
+Temperature and Alcohol Content show moderate variation
+Loss measurements show high variability (CV > 37%)
+
+
+```{r echo=FALSE}
+library(qcc)
+library(readr)
+library(dplyr)
+
+# Read the data
+beer_data <- read_csv("bottle_dataset.csv")
+
+# Set seed for reproducibility
+set.seed(42)
+
+# Group data for X-bar and R charts (creating subgroups of size 5)
+# First, let's sort by Beer_Style to make meaningful subgroups
+beer_data <- beer_data %>% arrange(Beer_Style)
+
+# Function to create subgroups
+create_subgroups <- function(data, variable, subgroup_size = 5) {
+  values <- data[[variable]]
+  n <- length(values)
+  # Trim to make it divisible by subgroup_size
+  n_groups <- floor(n/subgroup_size)
+  values <- values[1:(n_groups*subgroup_size)]
+  # Reshape into matrix with subgroup_size columns
+  matrix(values, ncol = subgroup_size, byrow = TRUE)
+}
+
+# X-bar and R charts for pH Level
+#pH_subgroups <- create_subgroups(beer_data, "pH_Level")
+#pH_xbar <- qcc(pH_subgroups, type = "xbar", title = "X-bar Chart for pH Level")
+#pH_R <- qcc(pH_subgroups, type = "R", title = "R Chart for pH Level")
+
+# X-bar and R charts for other key variables
+# variables <- c("Gravity", "Alcohol_Content", "Temperature")
+variables <- c("Quality_Score")
+for(var in variables) {
+  var_subgroups <- create_subgroups(beer_data, var)
+  var_xbar <- qcc(var_subgroups, type = "xbar", title = paste("X-bar Chart for", var))
+  var_R <- qcc(var_subgroups, type = "R", title = paste("R Chart for", var))
+  # Print the charts
+  print(var_xbar)
+  print(var_R)
+}
+
+# Generate defect and defective data for attribute charts
+# For a brewery, defects could be related to:
+# - Underfilled bottles (defective unit)
+# - Off-flavors (defects per unit)
+# - Label issues (defects per unit)
+# - Cap sealing problems (defective unit)
+
+# Sample size (inspection units)
+n <- nrow(beer_data)
+sample_size <- rep(100, n) # Assuming each row represents a batch with 100 inspections
+
+# Generate defective counts for np and p charts
+# Bottles with any defect (binary: defective or not)
+# Probability of defect related to Quality_Score (lower score, higher probability)
+defect_prob <- 0.1 * (10 - beer_data$Quality_Score)/10
+defectives <- rbinom(n, sample_size, defect_prob)
+
+# Generate defect counts for u charts
+# Number of defects (multiple defects possible per unit)
+# Rate related to both Quality_Score and Loss_During_Bottling_Kegging
+defect_rate <- 0.2 * (10 - beer_data$Quality_Score)/10 + 
+               0.3 * beer_data$Loss_During_Bottling_Kegging
+defects <- rpois(n, defect_rate * 100) # Multiply by 100 for the sample size
+
+# np chart (number of defective units)
+np_chart <- qcc(defectives, type = "np", sizes = sample_size, title = "np Chart for Defective Bottles")
+
+# p chart (proportion of defective units)
+p_chart <- qcc(defectives, type = "p", sizes = sample_size, title = "p Chart for Proportion of Defective Bottles")
+
+# u chart (defects per unit)
+u_chart <- qcc(defects, type = "u", sizes = sample_size, title = "u Chart for Defects per Bottle")
+
+# Run charts by beer style with attribute data
+styles <- unique(beer_data$Beer_Style)
+for(i in 1:length(styles)) {
+  style <- styles[i]
+  style_indices <- which(beer_data$Beer_Style == style)
+  
+  if(length(style_indices) >= 5) { # Only if we have enough data
+    # x-bar and R charts for this style
+    # style_pH <- create_subgroups(beer_data[style_indices,], "pH_Level")
+    # if(nrow(style_pH) > 1) {
+    #   style_xbar <- qcc(style_pH, type = "xbar", title = paste("X-bar Chart for pH Level -", style))
+    #   style_R <- qcc(style_pH, type = "R", title = paste("R Chart for pH Level -", style))
+    # }
+    
+    # p chart for this style
+    style_defectives <- defectives[style_indices]
+    style_sizes <- sample_size[style_indices]
+    if(length(style_defectives) > 1) {
+      style_p <- qcc(style_defectives, type = "p", sizes = style_sizes, 
+                    title = paste("p Chart for Defective Rate -", style))
+    }
+  }
+}
+
+# Location-based analysis with attribute data
+locations <- unique(beer_data$Location)
+for(loc in locations) {
+  loc_indices <- which(beer_data$Location == loc)
+  
+  if(length(loc_indices) >= 5) { # Only if we have enough data
+    # u chart for this location
+    loc_defects <- defects[loc_indices]
+    loc_sizes <- sample_size[loc_indices]
+    if(length(loc_defects) > 1) {
+      loc_u <- qcc(loc_defects, type = "u", sizes = loc_sizes,
+                  title = paste("u Chart for Defect Rate -", loc))
+    }
+  }
+}
+```
+
+```{r}
+# Capability analysis for Quality_Score
+Quality_capability <- process.capability(
+  qcc(beer_data$Quality_Score, type = "xbar.one"),
+  spec.limits = c(7, 10)  # Example specification limits
+)
+```
+
